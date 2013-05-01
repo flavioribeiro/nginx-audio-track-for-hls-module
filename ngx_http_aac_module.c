@@ -1,3 +1,4 @@
+#include <string.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -5,7 +6,8 @@
 #include <libavformat/avformat.h>
 
 static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *input_filename, const char *output_filename);
+static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_filename);
+char *change_file_extension(char *input_filename, int size);
 
 static ngx_command_t ngx_http_aac_commands[] = {
     { ngx_string("build_audio_track"),
@@ -61,7 +63,7 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
         return rc;
     }
 
-    ngx_http_aac_extract_audio(r, "/tmp/segment.ts", "output.aac");
+    ngx_http_aac_extract_audio(r, "output.aac");
 
     /* set the 'Content-type' header */
     r->headers_out.content_type_len = sizeof("text/html") - 1;
@@ -110,7 +112,7 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     return NGX_CONF_OK;
 }
 
-static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *input_filename, const char *output_filename) {
+static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_filename) {
     int audio_stream_id;
     int return_code = NGX_ERROR;
     AVFormatContext *input_format_context = NULL;
@@ -118,13 +120,16 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *input_f
     AVStream *input_audio_stream;
     AVStream *output_audio_stream;
     AVPacket packet, new_packet;
+    char *input_filename;
+
+    input_filename = change_file_extension((char *)r->uri.data, r->uri.len);
 
     av_register_all();
     packet.data = NULL;
     packet.size = 0;
 
     if (avformat_open_input(&input_format_context, input_filename, NULL, NULL) < 0) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not open video input: %s", input_filename);
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not open video input: %s", r->uri.data);
         goto exit;
     }
 
@@ -185,8 +190,18 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *input_f
 
 exit:
     /* do some cleanup */
+    free(input_filename);
     if (output_format_context != NULL) avformat_free_context(output_format_context);
     if (input_format_context != NULL) avformat_free_context(input_format_context);
 
     return return_code;
+}
+
+char *change_file_extension(char *input_filename, int size) {
+    char *new_filename;
+    new_filename = malloc((size -1) * sizeof(char));
+    strncpy(new_filename, input_filename, size - 3);
+    strcat(new_filename, "ts");
+
+    return new_filename;
 }
