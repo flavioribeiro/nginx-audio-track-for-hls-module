@@ -5,7 +5,7 @@
 #include <libavformat/avformat.h>
 
 static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static int ngx_http_aac_extract_audio(const char *input_filename, const char *output_filename);
+static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *input_filename, const char *output_filename);
 
 static ngx_command_t ngx_http_aac_commands[] = {
     { ngx_string("build_audio_track"),
@@ -61,7 +61,7 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
         return rc;
     }
 
-    ngx_http_aac_extract_audio("/tmp/segment.ts", "output.aac");
+    ngx_http_aac_extract_audio(r, "/tmp/segment.ts", "output.aac");
 
     /* set the 'Content-type' header */
     r->headers_out.content_type_len = sizeof("text/html") - 1;
@@ -110,7 +110,7 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     return NGX_CONF_OK;
 }
 
-static int ngx_http_aac_extract_audio(const char *input_filename, const char *output_filename) {
+static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *input_filename, const char *output_filename) {
     int audio_stream_id;
     int return_code = NGX_ERROR;
     AVFormatContext *input_format_context = NULL;
@@ -124,7 +124,7 @@ static int ngx_http_aac_extract_audio(const char *input_filename, const char *ou
     packet.size = 0;
 
     if (avformat_open_input(&input_format_context, input_filename, NULL, NULL) < 0) {
-        //(NGX_LOG_ERR, log, 0, "aac module: could not open video input: %s", input_filename);
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not open video input: %s", input_filename);
         goto exit;
     }
 
@@ -135,17 +135,17 @@ static int ngx_http_aac_extract_audio(const char *input_filename, const char *ou
     audio_stream_id = av_find_best_stream(input_format_context, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
     if (audio_stream_id == AVERROR_STREAM_NOT_FOUND) {
         // should return 404 to user? issue #2
-        //(NGX_LOG_ERR, log, 0, "aac module: audio stream not found");
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: audio stream not found");
         goto exit;
     } else if (audio_stream_id == AVERROR_DECODER_NOT_FOUND) {
-        //(NGX_LOG_ERR, log, 0, "aac module: audio stream found, but no decoder for it");
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: audio stream found, but no decoder for it");
         goto exit;
     }
 
     input_audio_stream = input_format_context->streams[audio_stream_id];
     output_format_context = avformat_alloc_context();
     if (!output_format_context) {
-        //(NGX_LOG_ERR, log, 0, "aac module: could not alloc output context");
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not alloc output context");
         goto exit;
     }
 
@@ -154,7 +154,7 @@ static int ngx_http_aac_extract_audio(const char *input_filename, const char *ou
 
     output_audio_stream = avformat_new_stream(output_format_context, NULL);
     if (!output_audio_stream) {
-        //(NGX_LOG_ERR, log, 0, "aac module: could not alloc output audio stream");
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not alloc output audio stream");
         goto exit;
     }
 
