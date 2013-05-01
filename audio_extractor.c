@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <assert.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
@@ -41,8 +40,6 @@ int main(int argc, char *argv[]) {
     avcodec_copy_context(output_audio_stream->codec, input_audio_stream->codec);
     avio_open(&output_format_context->pb, output_filename, AVIO_FLAG_WRITE);
 
-    av_dump_format(input_format_context, 0, input_filename, 0);
-    av_dump_format(output_format_context, 0, output_filename, 1);
     avformat_write_header(output_format_context, NULL);
 
     while (av_read_frame(input_format_context, &packet) >= 0) {
@@ -50,6 +47,8 @@ int main(int argc, char *argv[]) {
             av_init_packet(&new_packet);
             new_packet.pts = packet.pts;
             new_packet.dts = packet.dts;
+            /* avformat_new_stream creates audio stream at index 0,
+               so the packets need to be written at this index */
             new_packet.stream_index = 0;
             new_packet.data = packet.data;
             new_packet.size = packet.size;
