@@ -129,7 +129,7 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_
     packet.size = 0;
 
     if (avformat_open_input(&input_format_context, input_filename, NULL, NULL) < 0) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not open video input: %s", r->uri.data);
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not open video input: %s", input_filename);
         goto exit;
     }
 
@@ -190,7 +190,7 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_
 
 exit:
     /* do some cleanup */
-    free(input_filename);
+    av_free(input_filename);
     if (output_format_context != NULL) avformat_free_context(output_format_context);
     if (input_format_context != NULL) avformat_free_context(input_format_context);
 
@@ -198,10 +198,11 @@ exit:
 }
 
 char *change_file_extension(char *input_filename, int size) {
-    char *new_filename;
-    new_filename = malloc((size -1) * sizeof(char));
+    input_filename[size] = '\0';
+    char *new_filename = av_mallocz((size - 1) * sizeof(char));
     strncpy(new_filename, input_filename, size - 3);
     strcat(new_filename, "ts");
+    new_filename[size - 1] = '\0';
 
     return new_filename;
 }
