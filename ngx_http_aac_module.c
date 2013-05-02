@@ -6,6 +6,7 @@
 #include <libavformat/avformat.h>
 
 static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static int write_packet(void *opaque, unsigned char *buf, int buf_size);
 static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_filename);
 char *change_file_extension(char *input_filename, int size);
 
@@ -115,12 +116,15 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
 static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_filename) {
     int audio_stream_id;
     int return_code = NGX_ERROR;
+    int buffer_size;
     AVFormatContext *input_format_context = NULL;
     AVFormatContext *output_format_context = NULL;
     AVStream *input_audio_stream;
     AVStream *output_audio_stream;
     AVPacket packet, new_packet;
+    AVIOContext *io_context;
     char *input_filename;
+    unsigned char *exchange_area;
 
     input_filename = change_file_extension((char *)r->uri.data, r->uri.len);
 
@@ -154,17 +158,19 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_
         goto exit;
     }
 
-    output_format_context->oformat = av_guess_format("adts", NULL, NULL);
-    snprintf(output_format_context->filename, sizeof(output_format_context->filename), "%s", output_filename);
-
     output_audio_stream = avformat_new_stream(output_format_context, NULL);
     if (!output_audio_stream) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not alloc output audio stream");
         goto exit;
     }
 
+    buffer_size = 1024;
+    exchange_area = (unsigned char*)av_malloc(buffer_size*sizeof(unsigned char));
+    io_context = avio_alloc_context(exchange_area, buffer_size, 0, NULL, NULL, write_packet, NULL);
+    output_format_context->pb = io_context;
+    output_format_context->oformat = av_guess_format("adts", NULL, NULL);
+
     avcodec_copy_context(output_audio_stream->codec, input_audio_stream->codec);
-    avio_open(&output_format_context->pb, output_filename, AVIO_FLAG_WRITE);
     avformat_write_header(output_format_context, NULL);
 
     while (av_read_frame(input_format_context, &packet) >= 0) {
@@ -205,4 +211,9 @@ char *change_file_extension(char *input_filename, int size) {
     new_filename[size - 1] = '\0';
 
     return new_filename;
+}
+
+static int write_packet(void *opaque, unsigned char *buf, int buf_size) {
+    /* TODO change opaque to ngx_str_t and write on it */
+    return buf_size;
 }
