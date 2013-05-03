@@ -81,7 +81,7 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     }
 
     /* initialize audio output buffer */
-    output_buffer->data = malloc(1);
+    output_buffer->data = NULL;
     output_buffer->len = 0;
 
     ngx_http_aac_extract_audio(r, output_buffer);
@@ -198,11 +198,14 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *outpu
     }
 
     av_write_trailer(output_format_context);
+    av_free(exchange_area);
+    av_free(io_context);
+
     return_code = NGX_OK;
 
 exit:
     /* do some cleanup */
-    free(output_buffer->data);
+    if (output_buffer->data != NULL) av_free(output_buffer->data);
     if (input_filename != NULL) av_free(input_filename);
     if (output_format_context != NULL) avformat_free_context(output_format_context);
     if (input_format_context != NULL) avformat_free_context(input_format_context);
@@ -228,7 +231,7 @@ static int write_packet(void *opaque, unsigned char *buf, int buf_size) {
     output_buffer->len += buf_size;
 
     /* increase output_buffer->data */
-    output_buffer->data = realloc(output_buffer->data, output_buffer->len * sizeof(unsigned char)); //TODO improve realloc
+    output_buffer->data = av_realloc(output_buffer->data, output_buffer->len * sizeof(unsigned char)); //TODO improve realloc
 
     /* copy the new data in buf to output_buffer->data + old+size which is the begin of concatenation */
     memcpy(output_buffer->data + old_size, buf, buf_size * sizeof(unsigned char));
