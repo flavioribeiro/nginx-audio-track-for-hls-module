@@ -5,9 +5,14 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
+typedef struct {
+    unsigned char *data;
+    int len;
+} audio_buffer;
+
 static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static int write_packet(void *opaque, unsigned char *buf, int buf_size);
-static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_filename);
+static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *output_buffer);
 char *change_file_extension(char *input_filename, int size);
 
 static ngx_command_t ngx_http_aac_commands[] = {
@@ -51,12 +56,11 @@ ngx_module_t ngx_http_aac_module = {
     NGX_MODULE_V1_PADDING
 };
 
-static u_char ngx_hello_string[] = "Hello, world!";
-
 static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     ngx_int_t    rc;
     ngx_buf_t   *b;
     ngx_chain_t  out;
+    audio_buffer  *output_buffer = malloc(sizeof(audio_buffer));
 
     rc = ngx_http_discard_request_body(r);
 
@@ -64,12 +68,10 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
         return rc;
     }
 
-    ngx_http_aac_extract_audio(r, "output.aac");
-
     /* set the 'Content-type' header */
-    r->headers_out.content_type_len = sizeof("text/html") - 1;
-    r->headers_out.content_type.len = sizeof("text/html") - 1;
-    r->headers_out.content_type.data = (u_char *) "text/html";
+    r->headers_out.content_type_len = sizeof("audio/aac") - 1;
+    r->headers_out.content_type.len = sizeof("audio/aac") - 1;
+    r->headers_out.content_type.data = (u_char *) "audio/aac";
 
 
     /* allocate a buffer for your response body */
@@ -78,19 +80,25 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
+    /* initialize audio output buffer */
+    output_buffer->data = malloc(1);
+    output_buffer->len = 0;
+
+    ngx_http_aac_extract_audio(r, output_buffer);
+
     /* attach this buffer to the buffer chain */
     out.buf = b;
     out.next = NULL;
 
     /* adjust the pointers of the buffer */
-    b->pos = ngx_hello_string;
-    b->last = ngx_hello_string + sizeof(ngx_hello_string) - 1;
+    b->pos = output_buffer->data;
+    b->last = output_buffer->data + (output_buffer->len * sizeof(unsigned char));
     b->memory = 1;    /* this buffer is in memory */
     b->last_buf = 1;  /* this is the last buffer in the buffer chain */
 
     /* set the status line */
     r->headers_out.status = NGX_HTTP_OK;
-    r->headers_out.content_length_n = sizeof(ngx_hello_string) - 1;
+    r->headers_out.content_length_n = output_buffer->len;
 
     /* send the headers of your response */
     rc = ngx_http_send_header(r);
@@ -113,7 +121,7 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     return NGX_CONF_OK;
 }
 
-static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_filename) {
+static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *output_buffer) {
     int audio_stream_id;
     int return_code = NGX_ERROR;
     int buffer_size;
@@ -166,7 +174,8 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_
 
     buffer_size = 1024;
     exchange_area = (unsigned char*)av_malloc(buffer_size*sizeof(unsigned char));
-    io_context = avio_alloc_context(exchange_area, buffer_size, 0, NULL, NULL, write_packet, NULL);
+
+    io_context = avio_alloc_context(exchange_area, buffer_size, 1, (void *)output_buffer, NULL, write_packet, NULL);
     output_format_context->pb = io_context;
     output_format_context->oformat = av_guess_format("adts", NULL, NULL);
 
@@ -191,12 +200,12 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, const char *output_
     }
 
     av_write_trailer(output_format_context);
-    avio_close(output_format_context->pb);
     return_code = NGX_OK;
 
 exit:
     /* do some cleanup */
-    av_free(input_filename);
+    free(output_buffer->data);
+    if (input_filename != NULL) av_free(input_filename);
     if (output_format_context != NULL) avformat_free_context(output_format_context);
     if (input_format_context != NULL) avformat_free_context(input_format_context);
 
@@ -214,6 +223,17 @@ char *change_file_extension(char *input_filename, int size) {
 }
 
 static int write_packet(void *opaque, unsigned char *buf, int buf_size) {
-    /* TODO change opaque to ngx_str_t and write on it */
+    int old_size;
+    audio_buffer *output_buffer = (audio_buffer *)opaque;
+
+    old_size = output_buffer->len;
+    output_buffer->len += buf_size;
+
+    /* increase output_buffer->data */
+    output_buffer->data = realloc(output_buffer->data, output_buffer->len * sizeof(unsigned char)); //TODO improve realloc
+
+    /* copy the new data in buf to output_buffer->data + old+size which is the begin of concatenation */
+    memcpy(output_buffer->data + old_size, buf, buf_size * sizeof(unsigned char));
+
     return buf_size;
 }
