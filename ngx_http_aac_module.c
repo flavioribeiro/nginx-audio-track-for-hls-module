@@ -16,7 +16,7 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *outpu
 char *change_file_extension(char *input_filename, int size);
 
 static ngx_command_t ngx_http_aac_commands[] = {
-    { ngx_string("build_audio_track"),
+    { ngx_string("return_audio_track"),
       NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
       ngx_http_aac,
       0,
@@ -185,11 +185,9 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *outpu
     while (av_read_frame(input_format_context, &packet) >= 0) {
         if (packet.stream_index == audio_stream_id) {
             av_init_packet(&new_packet);
+            new_packet.stream_index = 0;
             new_packet.pts = packet.pts;
             new_packet.dts = packet.dts;
-            /* avformat_new_stream creates audio stream at index 0,
-               so the packets need to be written at this index */
-            new_packet.stream_index = 0;
             new_packet.data = packet.data;
             new_packet.size = packet.size;
 
