@@ -1,0 +1,71 @@
+h1(#nginx-aac-module). Nginx Audio Track for HLS Streams
+
+Apple HTTP Live Streaming (HLS) has being adopted for almost all video stream players, and one of it's recommendations
+is to serve an audio-only track to users that have experiencing bad bandwidth connections.
+
+This module aims to serve audio-only track directly on nginx, without the necessity to pre-demux the stream on VoD cases
+or the overhead and occupation of one stream output on the encoder side for live streams.
+
+#TODO improve this section
+
+_This module is not distributed with the Nginx source. See "the installation instructions":installation._
+
+
+h1(#status). Status
+
+This module is under development. Feedbacks and patches are welcome.
+
+
+h1(#requirements). Requirements
+
+This module depends from some libraries (headers and shared objects) which has to be installed before it:
+
+* avformat >= 55.0.0 (tested version: 55.0.0) - commonly distributed with "FFmpeg":http://ffmpeg.org
+* avcodec >= 55.3.0 (tested version: 55.3.0) - commonly distributed with "FFmpeg":http://ffmpeg.org
+* avutil >= 52.10.0 (tested version: 52.10.0) - commonly distributed with "FFmpeg":http://ffmpeg.org
+
+To install FFmpeg from source with the specified versions follow the steps bellow:
+
+<pre>
+  git clone git://git.videolan.org/ffmpeg
+  cd ffmpeg
+  ./configure --prefix=/usr --disable-ffserver --disable-ffplay --enable-shared
+  make clean && make
+  make install
+</pre>
+
+
+h1(#supported_video_formats). Supported Formats
+
+This module only supports audio extraction from _mpegts_ video chunks to _aac_ audio-only chunks.
+Look at project issues to see which other formats are going to be supported in the future.
+
+
+h1(#installation). Installation
+
+Install the above requirements and follow the steps bellow.
+
+<pre>
+    # TODO
+</pre>
+
+
+h1(#basic-configuration). Basic Configuration
+
+<pre>
+    # TODO
+</pre>
+
+
+h1(#basic-usage). Basic Usage
+
+<pre>
+    # TODO
+</pre>
+
+
+h1(#contributors). Contributors
+
+"People":AUTHORS
+
+
