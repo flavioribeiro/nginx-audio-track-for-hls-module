@@ -208,7 +208,7 @@ exit:
     if (output_buffer->data != NULL) av_free(output_buffer->data);
     if (input_filename != NULL) av_free(input_filename);
     if (output_format_context != NULL) avformat_free_context(output_format_context);
-    if (input_format_context != NULL) avformat_free_context(input_format_context);
+    if (input_format_context != NULL) avformat_close_input(&input_format_context);
 
     return return_code;
 }
