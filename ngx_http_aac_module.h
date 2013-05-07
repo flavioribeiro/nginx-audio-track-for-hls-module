@@ -10,6 +10,13 @@ typedef struct {
     int len;
 } audio_buffer;
 
+
+typedef struct {
+  ngx_http_complex_value_t *videosegments_rootpath;
+  ngx_flag_t enabled;
+} ngx_http_aac_module_loc_conf_t;
+
+
 static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static int write_packet(void *opaque, unsigned char *buf, int buf_size);
@@ -18,15 +25,28 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *outpu
 
 char *change_file_extension(char *input_filename, int size);
 
+static void* ngx_http_aac_module_create_loc_conf(ngx_conf_t *cf);
+
+static char* ngx_http_aac_module_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);
+
 static ngx_command_t ngx_http_aac_commands[] = {
     { ngx_string("return_audio_track"),
       NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
       ngx_http_aac,
-      0,
+      NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
+
+    { ngx_string("set_segments_rootpath"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_set_complex_value_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_aac_module_loc_conf_t, videosegments_rootpath),
+      NULL },
+
     ngx_null_command
 };
+
 
 static ngx_http_module_t ngx_http_aac_module_ctx = {
     NULL,                          /* preconfiguration */
@@ -38,8 +58,8 @@ static ngx_http_module_t ngx_http_aac_module_ctx = {
     NULL,                          /* create server configuration */
     NULL,                          /* merge server configuration */
 
-    NULL,                          /* create location configuration */
-    NULL                           /* merge location configuration */
+    ngx_http_aac_module_create_loc_conf, /* create location configuration */
+    ngx_http_aac_module_merge_loc_conf /* merge location configuration */
 };
 
 ngx_module_t ngx_http_aac_module = {
