@@ -52,8 +52,32 @@ Install the above requirements and follow the steps bellow.
 
 h1(#basic-configuration). Basic Configuration
 
+On your nginx.conf:
+
 <pre>
-    # TODO
+worker_processes 1;
+daemon off;
+
+events {
+       worker_connections 1024;
+}
+
+http {
+     server {
+            listen 8080;
+            server_name localhost;
+            set $root "/path/that/segmenter/will/put/ts";
+
+            location ~ .aac$ {
+                ngx_hls_audio_track;
+                ngx_hls_audio_track_rootpath $docroot;
+            }
+
+            location / {
+                root $docroot;
+            }
+     }
+}
 </pre>
 
 

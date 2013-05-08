@@ -2,5 +2,5 @@ ngx_addon_name=ngx_http_aac_module
 HTTP_MODULES="$HTTP_MODULES ngx_http_aac_module"
 NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_aac_module.c"
 NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/ngx_http_aac_module.h"
-ngx_feature_libs="-lavformat_s -lavcodec_s -lavutil_s -lz -lm -lbz2"
+ngx_feature_libs="-lavformat -lavcodec -lavutil -lz -lm -lbz2"
 CORE_LIBS="$CORE_LIBS $ngx_feature_libs"

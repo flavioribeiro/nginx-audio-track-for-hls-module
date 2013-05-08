@@ -30,14 +30,14 @@ static void* ngx_http_aac_module_create_loc_conf(ngx_conf_t *cf);
 static char* ngx_http_aac_module_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);
 
 static ngx_command_t ngx_http_aac_commands[] = {
-    { ngx_string("return_audio_track"),
+    { ngx_string("ngx_hls_audio_track"),
       NGX_HTTP_LOC_CONF|NGX_CONF_NOARGS,
       ngx_http_aac,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
 
-    { ngx_string("set_segments_rootpath"),
+    { ngx_string("ngx_hls_audio_track_rootpath"),
       NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
