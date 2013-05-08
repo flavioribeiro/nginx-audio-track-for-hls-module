@@ -9,7 +9,7 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     audio_buffer    *destination;
     ngx_http_aac_module_loc_conf_t *conf;
 
-    destination = malloc(sizeof(audio_buffer));
+    destination = ngx_pcalloc(r->pool, sizeof(audio_buffer));
     destination->data = NULL;
     destination->len = 0;
 
@@ -31,8 +31,8 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     }
 
     /* TODO get the return of this method call (issue #13) */
-    source = build_source_path(rootpath, r->uri);
-    ngx_http_aac_extract_audio(r->connection->log, source, destination);
+    source = build_source_path(r->pool, rootpath, r->uri);
+    ngx_http_aac_extract_audio(r->pool, r->connection->log, source, destination);
 
     out.buf = b;
     out.next = NULL;
@@ -97,7 +97,7 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     return NGX_CONF_OK;
 }
 
-static int ngx_http_aac_extract_audio(ngx_log_t  *log, ngx_str_t source, audio_buffer *destination) {
+static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str_t source, audio_buffer *destination) {
     int    audio_stream_id;
     int    return_code = NGX_ERROR;
     int    buffer_size;
@@ -147,7 +147,7 @@ static int ngx_http_aac_extract_audio(ngx_log_t  *log, ngx_str_t source, audio_b
     }
 
     buffer_size = 1024;
-    exchange_area = (unsigned char*)av_malloc(buffer_size*sizeof(unsigned char));
+    exchange_area = ngx_pcalloc(pool, buffer_size * sizeof(unsigned char));
 
     io_context = avio_alloc_context(exchange_area, buffer_size, 1, (void *)destination, NULL, write_packet, NULL);
     output_format_context->pb = io_context;
@@ -172,7 +172,6 @@ static int ngx_http_aac_extract_audio(ngx_log_t  *log, ngx_str_t source, audio_b
     }
 
     av_write_trailer(output_format_context);
-    av_free(exchange_area);
     av_free(io_context);
 
     return_code = NGX_OK;
@@ -185,9 +184,9 @@ exit:
     return return_code;
 }
 
-ngx_str_t build_source_path(ngx_str_t rootpath, ngx_str_t uri) {
+ngx_str_t build_source_path(ngx_pool_t *pool, ngx_str_t rootpath, ngx_str_t uri) {
     int len = (rootpath.len + uri.len - 1);
-    char *source = malloc(len * sizeof(char));
+    char *source = ngx_pcalloc(pool, len * sizeof(char));
     ngx_str_t source_t;
 
     strcpy(source, (char *)rootpath.data);
