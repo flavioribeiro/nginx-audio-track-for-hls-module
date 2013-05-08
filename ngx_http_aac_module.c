@@ -5,12 +5,13 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     ngx_buf_t       *b;
     ngx_chain_t     out;
     ngx_str_t       rootpath = ngx_null_string;
-    audio_buffer    *output_buffer;
+    ngx_str_t       source = ngx_null_string;
+    audio_buffer    *destination;
     ngx_http_aac_module_loc_conf_t *conf;
 
-    output_buffer = malloc(sizeof(audio_buffer));
-    output_buffer->data = NULL;
-    output_buffer->len = 0;
+    destination = malloc(sizeof(audio_buffer));
+    destination->data = NULL;
+    destination->len = 0;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_aac_module);
     ngx_http_complex_value(r, conf->videosegments_rootpath, &rootpath);
@@ -30,18 +31,19 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     }
 
     /* TODO get the return of this method call (issue #13) */
-    ngx_http_aac_extract_audio(r, output_buffer);
+    source = build_source_path(rootpath, r->uri);
+    ngx_http_aac_extract_audio(r->connection->log, source, destination);
 
     out.buf = b;
     out.next = NULL;
 
-    b->pos = output_buffer->data;
-    b->last = output_buffer->data + (output_buffer->len * sizeof(unsigned char));
+    b->pos = destination->data;
+    b->last = destination->data + (destination->len * sizeof(unsigned char));
     b->memory = 1;
     b->last_buf = 1;
 
     r->headers_out.status = NGX_HTTP_OK;
-    r->headers_out.content_length_n = output_buffer->len;
+    r->headers_out.content_length_n = destination->len;
 
     rc = ngx_http_send_header(r);
     if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
@@ -95,11 +97,10 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     return NGX_CONF_OK;
 }
 
-static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *output_buffer) {
+static int ngx_http_aac_extract_audio(ngx_log_t  *log, ngx_str_t source, audio_buffer *destination) {
     int    audio_stream_id;
     int    return_code = NGX_ERROR;
     int    buffer_size;
-    char   *input_filename;
     unsigned char *exchange_area;
 
     AVFormatContext *input_format_context = NULL;
@@ -109,14 +110,12 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *outpu
     AVPacket packet, new_packet;
     AVIOContext *io_context;
 
-    input_filename = change_file_extension((char *)r->uri.data, r->uri.len);
-
     av_register_all();
     packet.data = NULL;
     packet.size = 0;
 
-    if (avformat_open_input(&input_format_context, input_filename, NULL, NULL) < 0) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not open video input: '%s'", input_filename);
+    if (avformat_open_input(&input_format_context, (char *)source.data, NULL, NULL) < 0) {
+        ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not open video input: '%s'", source.data);
         goto exit;
     }
 
@@ -127,30 +126,30 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *outpu
     audio_stream_id = av_find_best_stream(input_format_context, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
     if (audio_stream_id == AVERROR_STREAM_NOT_FOUND) {
         // should return 404 to user? issue #2
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: audio stream not found");
+        ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: audio stream not found");
         goto exit;
     } else if (audio_stream_id == AVERROR_DECODER_NOT_FOUND) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: audio stream found, but no decoder for it");
+        ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: audio stream found, but no decoder for it");
         goto exit;
     }
 
     input_audio_stream = input_format_context->streams[audio_stream_id];
     output_format_context = avformat_alloc_context();
     if (!output_format_context) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not alloc output context");
+        ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not alloc output context");
         goto exit;
     }
 
     output_audio_stream = avformat_new_stream(output_format_context, NULL);
     if (!output_audio_stream) {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "aac module: could not alloc output audio stream");
+        ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not alloc output audio stream");
         goto exit;
     }
 
     buffer_size = 1024;
     exchange_area = (unsigned char*)av_malloc(buffer_size*sizeof(unsigned char));
 
-    io_context = avio_alloc_context(exchange_area, buffer_size, 1, (void *)output_buffer, NULL, write_packet, NULL);
+    io_context = avio_alloc_context(exchange_area, buffer_size, 1, (void *)destination, NULL, write_packet, NULL);
     output_format_context->pb = io_context;
     output_format_context->oformat = av_guess_format("adts", NULL, NULL);
 
@@ -180,34 +179,37 @@ static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *outpu
 
 exit:
     /* do some cleanup */
-    if (output_buffer->data != NULL) av_free(output_buffer->data);
-    if (input_filename != NULL) av_free(input_filename);
     if (output_format_context != NULL) avformat_free_context(output_format_context);
     if (input_format_context != NULL) avformat_close_input(&input_format_context);
 
     return return_code;
 }
 
-char *change_file_extension(char *input_filename, int size) {
-    input_filename[size] = '\0';
-    char *new_filename = av_mallocz((size - 1) * sizeof(char));
-    strncpy(new_filename, input_filename, size - 3);
-    strcat(new_filename, "ts");
-    new_filename[size - 1] = '\0';
+ngx_str_t build_source_path(ngx_str_t rootpath, ngx_str_t uri) {
+    int len = (rootpath.len + uri.len - 1);
+    char *source = malloc(len * sizeof(char));
+    ngx_str_t source_t;
 
-    return new_filename;
+    strcpy(source, (char *)rootpath.data);
+    strncat(source, (char *)uri.data, uri.len - 3);
+    strcat(source, "ts");
+    source[len] = '\0';
+
+    source_t.data = (u_char *)source;
+    source_t.len = len;
+    return source_t;
 }
 
 static int write_packet(void *opaque, unsigned char *buf, int buf_size) {
     int old_size;
-    audio_buffer *output_buffer = (audio_buffer *)opaque;
+    audio_buffer *destination = (audio_buffer *)opaque;
 
-    old_size = output_buffer->len;
-    output_buffer->len += buf_size;
+    old_size = destination->len;
+    destination->len += buf_size;
 
     /* TODO improve realloc */
-    output_buffer->data = av_realloc(output_buffer->data, output_buffer->len * sizeof(unsigned char));
-    memcpy(output_buffer->data + old_size, buf, buf_size * sizeof(unsigned char));
+    destination->data = av_realloc(destination->data, destination->len * sizeof(unsigned char));
+    memcpy(destination->data + old_size, buf, buf_size * sizeof(unsigned char));
 
     return buf_size;
 }

@@ -21,9 +21,9 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static int write_packet(void *opaque, unsigned char *buf, int buf_size);
 
-static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *output_buffer);
+static int ngx_http_aac_extract_audio(ngx_log_t  *log, ngx_str_t source, audio_buffer *destination);
 
-char *change_file_extension(char *input_filename, int size);
+ngx_str_t build_source_path(ngx_str_t rootpath, ngx_str_t uri);
 
 static void* ngx_http_aac_module_create_loc_conf(ngx_conf_t *cf);
 
