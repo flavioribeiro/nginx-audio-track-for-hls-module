@@ -1,62 +1,53 @@
 #include "ngx_http_aac_module.h"
 
 static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
-    ngx_int_t    rc;
-    ngx_buf_t   *b;
-    ngx_chain_t  out;
-    ngx_str_t rootpath = ngx_null_string;
-    audio_buffer  *output_buffer = malloc(sizeof(audio_buffer));
+    ngx_int_t       rc;
+    ngx_buf_t       *b;
+    ngx_chain_t     out;
+    ngx_str_t       rootpath = ngx_null_string;
+    audio_buffer    *output_buffer;
     ngx_http_aac_module_loc_conf_t *conf;
+
+    output_buffer = malloc(sizeof(audio_buffer));
+    output_buffer->data = NULL;
+    output_buffer->len = 0;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_aac_module);
     ngx_http_complex_value(r, conf->videosegments_rootpath, &rootpath);
 
     rc = ngx_http_discard_request_body(r);
-
     if (rc != NGX_OK) {
         return rc;
     }
 
-    /* set the 'Content-type' header */
     r->headers_out.content_type_len = sizeof("audio/aac") - 1;
     r->headers_out.content_type.len = sizeof("audio/aac") - 1;
     r->headers_out.content_type.data = (u_char *) "audio/aac";
 
-
-    /* allocate a buffer for your response body */
     b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
     if (b == NULL) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    /* initialize audio output buffer */
-    output_buffer->data = NULL;
-    output_buffer->len = 0;
-
+    /* TODO get the return of this method call (issue #13) */
     ngx_http_aac_extract_audio(r, output_buffer);
 
-    /* attach this buffer to the buffer chain */
     out.buf = b;
     out.next = NULL;
 
-    /* adjust the pointers of the buffer */
     b->pos = output_buffer->data;
     b->last = output_buffer->data + (output_buffer->len * sizeof(unsigned char));
-    b->memory = 1;    /* this buffer is in memory */
-    b->last_buf = 1;  /* this is the last buffer in the buffer chain */
+    b->memory = 1;
+    b->last_buf = 1;
 
-    /* set the status line */
     r->headers_out.status = NGX_HTTP_OK;
     r->headers_out.content_length_n = output_buffer->len;
 
-    /* send the headers of your response */
     rc = ngx_http_send_header(r);
-
     if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
         return rc;
     }
 
-    /* send the buffer chain of your response */
     return ngx_http_output_filter(r, &out);
 }
 
@@ -105,17 +96,18 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
 }
 
 static int ngx_http_aac_extract_audio(ngx_http_request_t *r, audio_buffer *output_buffer) {
-    int audio_stream_id;
-    int return_code = NGX_ERROR;
-    int buffer_size;
+    int    audio_stream_id;
+    int    return_code = NGX_ERROR;
+    int    buffer_size;
+    char   *input_filename;
+    unsigned char *exchange_area;
+
     AVFormatContext *input_format_context = NULL;
     AVFormatContext *output_format_context = NULL;
     AVStream *input_audio_stream;
     AVStream *output_audio_stream;
     AVPacket packet, new_packet;
     AVIOContext *io_context;
-    char *input_filename;
-    unsigned char *exchange_area;
 
     input_filename = change_file_extension((char *)r->uri.data, r->uri.len);
 
@@ -213,10 +205,8 @@ static int write_packet(void *opaque, unsigned char *buf, int buf_size) {
     old_size = output_buffer->len;
     output_buffer->len += buf_size;
 
-    /* increase output_buffer->data */
-    output_buffer->data = av_realloc(output_buffer->data, output_buffer->len * sizeof(unsigned char)); //TODO improve realloc
-
-    /* copy the new data in buf to output_buffer->data + old+size which is the begin of concatenation */
+    /* TODO improve realloc */
+    output_buffer->data = av_realloc(output_buffer->data, output_buffer->len * sizeof(unsigned char));
     memcpy(output_buffer->data + old_size, buf, buf_size * sizeof(unsigned char));
 
     return buf_size;
