@@ -1,6 +1,7 @@
 #include "ngx_http_aac_module.h"
 
 static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
+    int             status_code;
     ngx_int_t       rc;
     ngx_buf_t       *b;
     ngx_chain_t     out;
@@ -21,29 +22,45 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
         return rc;
     }
 
-    r->headers_out.content_type_len = sizeof("audio/aac") - 1;
-    r->headers_out.content_type.len = sizeof("audio/aac") - 1;
-    r->headers_out.content_type.data = (u_char *) "audio/aac";
-
-    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
-    if (b == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    /* TODO get the return of this method call (issue #13) */
     source = build_source_path(r->pool, rootpath, r->uri);
-    ngx_http_aac_extract_audio(r->pool, r->connection->log, source, destination);
+    status_code = ngx_http_aac_extract_audio(r->pool, r->connection->log, source, destination);
 
-    out.buf = b;
-    out.next = NULL;
+    if (status_code == NGX_HTTP_AAC_MODULE_VIDEO_SEGMENT_NOT_FOUND) {
+        r->headers_out.status = NGX_HTTP_NOT_FOUND;
+        r->header_only = 1;
+        r->headers_out.content_length_n = 0;
 
-    b->pos = destination->data;
-    b->last = destination->data + (destination->len * sizeof(unsigned char));
-    b->memory = 1;
-    b->last_buf = 1;
+    } else if (status_code == NGX_HTTP_AAC_MODULE_AUDIO_STREAM_NOT_FOUND) {
+        r->headers_out.status = NGX_HTTP_NO_CONTENT;
+        r->header_only = 1;
+        r->headers_out.content_length_n = 0;
 
-    r->headers_out.status = NGX_HTTP_OK;
-    r->headers_out.content_length_n = destination->len;
+    } else if (status_code == NGX_HTTP_AAC_MODULE_NO_DECODER) {
+        r->headers_out.status = NGX_HTTP_NOT_IMPLEMENTED;
+        r->header_only = 1;
+        r->headers_out.content_length_n = 0;
+
+    } else {
+        r->headers_out.content_type_len = sizeof("audio/aac") - 1;
+        r->headers_out.content_type.len = sizeof("audio/aac") - 1;
+        r->headers_out.content_type.data = (u_char *) "audio/aac";
+
+        b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+        if (b == NULL) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+
+        out.buf = b;
+        out.next = NULL;
+
+        b->pos = destination->data;
+        b->last = destination->data + (destination->len * sizeof(unsigned char));
+        b->memory = 1;
+        b->last_buf = 1;
+
+        r->headers_out.status = NGX_HTTP_OK;
+        r->headers_out.content_length_n = destination->len;
+    }
 
     rc = ngx_http_send_header(r);
     if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
@@ -116,20 +133,23 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
 
     if (avformat_open_input(&input_format_context, (char *)source.data, NULL, NULL) < 0) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not open video input: '%s'", source.data);
+        return_code = NGX_HTTP_AAC_MODULE_VIDEO_SEGMENT_NOT_FOUND;
         goto exit;
     }
 
     if (avformat_find_stream_info(input_format_context, NULL) < 0) {
         goto exit;
+        ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not find stream info");
     }
 
     audio_stream_id = av_find_best_stream(input_format_context, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
     if (audio_stream_id == AVERROR_STREAM_NOT_FOUND) {
-        // should return 404 to user? issue #2
         ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: audio stream not found");
+        return_code = NGX_HTTP_AAC_MODULE_AUDIO_STREAM_NOT_FOUND;
         goto exit;
     } else if (audio_stream_id == AVERROR_DECODER_NOT_FOUND) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: audio stream found, but no decoder for it");
+        return_code = NGX_HTTP_AAC_MODULE_NO_DECODER;
         goto exit;
     }
 

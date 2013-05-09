@@ -5,6 +5,10 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
+#define NGX_HTTP_AAC_MODULE_VIDEO_SEGMENT_NOT_FOUND 3
+#define NGX_HTTP_AAC_MODULE_AUDIO_STREAM_NOT_FOUND 4
+#define NGX_HTTP_AAC_MODULE_NO_DECODER 5
+
 typedef struct {
     unsigned char *data;
     int len;
