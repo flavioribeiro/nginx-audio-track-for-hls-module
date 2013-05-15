@@ -129,6 +129,7 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
     AVIOContext *io_context;
 
     av_register_all();
+    av_log_set_level(AV_LOG_PANIC);
     packet.data = NULL;
     packet.size = 0;
 
