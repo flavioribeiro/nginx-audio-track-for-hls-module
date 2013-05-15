@@ -1,11 +1,11 @@
 Nginx Audio Track for HTTP Live Streaming
 =========
 
-This nginx module generate audio track for hls streams on the fly.
+This nginx module generates audio track for hls streams on the fly.
 
 Why?
 -
-Apple HTTP Live Streaming (HLS) has being adopted for almost all video stream players, and one of it's recommendations is to serve an audio-only track to users that have experiencing bad bandwidth connections.
+Apple HTTP Live Streaming (HLS) has being adopted for almost all video stream players, and one of their recommendations is to serve an audio-only track to users that have experiencing bad bandwidth connections.
 
 This module aims to serve audio-only track directly on nginx, without the necessity to pre-demux the stream on Video On Demand (VoD) scenarios or the overhead and occupation of one stream output on the encoder side for live streams.
 
@@ -86,7 +86,7 @@ $ git clone git://github.com/flavioribeiro/nginx-audio-track-for-hls-module.git
 $ git clone git://github.com/chaoslawful/lua-nginx-module.git
 </pre>
 
-Now, download [nginx] and compile it using both modules:
+* Download [nginx] and compile it using both modules:
 <pre>
 $ ./configure --add-module=/path/to/nginx-audio-track-for-hls-module --add-module=/path/to/lua-nginx-module
 $ make install
@@ -94,10 +94,32 @@ $ make install
 
 Now you can look at our [nginx configuration example] and make your changes. Have fun!
 
+Warning
+-
+It is high recommended to use caching in all locations of HLS, in special the one that returns the generated _.aac_.
+
 License
 -
 
-GPL. *Free Software, Fuck Yeah!*
+Copyright (C) 2013 Flávio Ribeiro < flavio.ribeiro _at_ corp.globo.com >
+
+Nginx Audio Track For HLS Module is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+Nginx Audio Track For HLS Module is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with Nginx Audio Track For HLS Module.  If not, see <http://www.gnu.org/licenses/>.
+
+All files in Nginx Audio Track For HLS Module are under GPL unless otherwise noted in
+file's header.  Some files may be sublicensed.
+
+*Free Software, Fuck Yeah!*
 
 
   [nginx configuration example]: https://github.com/flavioribeiro/nginx-audio-track-for-hls-module/blob/master/nginx.conf
