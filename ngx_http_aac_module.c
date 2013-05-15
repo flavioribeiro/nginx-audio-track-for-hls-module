@@ -13,6 +13,7 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     destination = ngx_pcalloc(r->pool, sizeof(audio_buffer));
     destination->data = NULL;
     destination->len = 0;
+    destination->pool = r->pool;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_aac_module);
     ngx_http_complex_value(r, conf->videosegments_rootpath, &rootpath);
@@ -223,11 +224,12 @@ static int write_packet(void *opaque, unsigned char *buf, int buf_size) {
     int old_size;
     audio_buffer *destination = (audio_buffer *)opaque;
 
+    if (destination->data == NULL) {
+        destination->data = ngx_pcalloc(destination->pool, NGX_AAC_AUDIO_CHUNK_MAX_SIZE * sizeof(unsigned char));
+    }
+
     old_size = destination->len;
     destination->len += buf_size;
-
-    /* TODO improve realloc */
-    destination->data = av_realloc(destination->data, destination->len * sizeof(unsigned char));
     memcpy(destination->data + old_size, buf, buf_size * sizeof(unsigned char));
 
     return buf_size;

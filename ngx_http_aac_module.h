@@ -8,10 +8,12 @@
 #define NGX_HTTP_AAC_MODULE_VIDEO_SEGMENT_NOT_FOUND 3
 #define NGX_HTTP_AAC_MODULE_AUDIO_STREAM_NOT_FOUND 4
 #define NGX_HTTP_AAC_MODULE_NO_DECODER 5
+#define NGX_AAC_AUDIO_CHUNK_MAX_SIZE 96100
 
 typedef struct {
     unsigned char *data;
     int len;
+    ngx_pool_t *pool;
 } audio_buffer;
 
 
