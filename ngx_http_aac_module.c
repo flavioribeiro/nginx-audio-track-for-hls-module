@@ -207,14 +207,13 @@ exit:
 }
 
 ngx_str_t build_source_path(ngx_pool_t *pool, ngx_str_t rootpath, ngx_str_t uri) {
-    int len = (rootpath.len + uri.len - 1);
+    int len = (rootpath.len + uri.len - strlen("aac") + strlen("ts"));
     char *source = ngx_pcalloc(pool, len * sizeof(char));
     ngx_str_t source_t;
 
-    strcpy(source, (char *)rootpath.data);
-    strncat(source, (char *)uri.data, uri.len - 3);
+    strncpy(source, (char *)rootpath.data, rootpath.len);
+    strncat(source, (char *)uri.data, uri.len - strlen("aac"));
     strcat(source, "ts");
-    source[len] = '\0';
 
     source_t.data = (u_char *)source;
     source_t.len = len;
