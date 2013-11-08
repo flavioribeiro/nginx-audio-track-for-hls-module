@@ -56,7 +56,7 @@ That's it!
 
 Status
 -
-This module is under development. Feedbacks, issues and patches are welcome.
+This module is under development, but production ready. Feedbacks, issues and patches are welcome.
 
 Requirements
 -
