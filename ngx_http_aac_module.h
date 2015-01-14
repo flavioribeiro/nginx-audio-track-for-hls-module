@@ -19,6 +19,8 @@ typedef struct {
 
 typedef struct {
   ngx_http_complex_value_t *videosegments_rootpath;
+  ngx_http_complex_value_t *output_format;
+  ngx_http_complex_value_t *output_header;
   ngx_flag_t enabled;
 } ngx_http_aac_module_loc_conf_t;
 
@@ -27,7 +29,7 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 static int write_packet(void *opaque, unsigned char *buf, int buf_size);
 
-static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str_t source, audio_buffer *destination);
+static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str_t source, ngx_str_t outputfmt, audio_buffer *destination);
 
 ngx_str_t build_source_path(ngx_pool_t *pool, ngx_str_t rootpath, ngx_str_t uri);
 
@@ -48,6 +50,20 @@ static ngx_command_t ngx_http_aac_commands[] = {
       ngx_http_set_complex_value_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_aac_module_loc_conf_t, videosegments_rootpath),
+      NULL },
+
+    { ngx_string("ngx_hls_audio_track_output_format"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_set_complex_value_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_aac_module_loc_conf_t, output_format),
+      NULL },
+
+    { ngx_string("ngx_hls_audio_track_output_header"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_http_set_complex_value_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_aac_module_loc_conf_t, output_header),
       NULL },
 
     ngx_null_command
