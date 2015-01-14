@@ -6,6 +6,8 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     ngx_buf_t       *b;
     ngx_chain_t     out;
     ngx_str_t       rootpath = ngx_null_string;
+    ngx_str_t       outputformat = ngx_null_string;
+    ngx_str_t       outputheader = ngx_null_string;
     ngx_str_t       source = ngx_null_string;
     audio_buffer    *destination;
     ngx_http_aac_module_loc_conf_t *conf;
@@ -17,6 +19,8 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_aac_module);
     ngx_http_complex_value(r, conf->videosegments_rootpath, &rootpath);
+    ngx_http_complex_value(r, conf->output_format, &outputformat);
+    ngx_http_complex_value(r, conf->output_header, &outputheader);
 
     rc = ngx_http_discard_request_body(r);
     if (rc != NGX_OK) {
@@ -24,7 +28,7 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
     }
 
     source = build_source_path(r->pool, rootpath, r->uri);
-    status_code = ngx_http_aac_extract_audio(r->pool, r->connection->log, source, destination);
+    status_code = ngx_http_aac_extract_audio(r->pool, r->connection->log, source, outputformat, destination);
 
     if (status_code == NGX_HTTP_AAC_MODULE_VIDEO_SEGMENT_NOT_FOUND) {
         r->headers_out.status = NGX_HTTP_NOT_FOUND;
@@ -42,9 +46,9 @@ static ngx_int_t ngx_http_aac_handler(ngx_http_request_t *r) {
         r->headers_out.content_length_n = 0;
 
     } else {
-        r->headers_out.content_type_len = sizeof("audio/aac") - 1;
-        r->headers_out.content_type.len = sizeof("audio/aac") - 1;
-        r->headers_out.content_type.data = (u_char *) "audio/aac";
+        r->headers_out.content_type_len = outputheader.len;
+        r->headers_out.content_type.len = r->headers_out.content_type_len;
+        r->headers_out.content_type.data = outputheader.data;
 
         b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
         if (b == NULL) {
@@ -80,6 +84,8 @@ static void *ngx_http_aac_module_create_loc_conf(ngx_conf_t *cf) {
     }
 
     conf->videosegments_rootpath = NULL;
+    conf->output_format = NULL;
+    conf->output_header = NULL;
     conf->enabled = NGX_CONF_UNSET;
 
     return conf;
@@ -95,8 +101,26 @@ static char *ngx_http_aac_module_merge_loc_conf(ngx_conf_t *cf, void *parent, vo
         conf->videosegments_rootpath = (ngx_http_complex_value_t *)prev->videosegments_rootpath;
     }
 
+    if (conf->output_format == NULL) {
+        conf->output_format = (ngx_http_complex_value_t *)prev->output_format;
+    }
+
+    if (conf->output_header == NULL) {
+        conf->output_header = (ngx_http_complex_value_t *)prev->output_header;
+    }
+
     if ((conf->videosegments_rootpath == NULL) && (conf->enabled == 1)) {
         ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "aac module: videosegments rootpath must be defined");
+        return NGX_CONF_ERROR;
+    }
+
+    if ((conf->output_format == NULL) && (conf->enabled == 1)) {
+        ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "aac module: output format must be defined");
+        return NGX_CONF_ERROR;
+    }
+
+    if ((conf->output_header == NULL) && (conf->enabled == 1)) {
+        ngx_conf_log_error(NGX_LOG_ERR, cf, 0, "aac module: output header must be defined");
         return NGX_CONF_ERROR;
     }
 
@@ -115,7 +139,7 @@ static char *ngx_http_aac(ngx_conf_t *cf, ngx_command_t *cmd, void *conf) {
     return NGX_CONF_OK;
 }
 
-static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str_t source, audio_buffer *destination) {
+static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str_t source, ngx_str_t outputfmt, audio_buffer *destination) {
     int    audio_stream_id;
     int    return_code = NGX_ERROR;
     int    buffer_size;
@@ -123,6 +147,7 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
 
     AVFormatContext *input_format_context = NULL;
     AVFormatContext *output_format_context = NULL;
+    AVOutputFormat *ofmt = NULL;
     AVStream *input_audio_stream;
     AVStream *output_audio_stream;
     AVPacket packet, new_packet;
@@ -173,7 +198,14 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
 
     io_context = avio_alloc_context(exchange_area, buffer_size, 1, (void *)destination, NULL, write_packet, NULL);
     output_format_context->pb = io_context;
-    output_format_context->oformat = av_guess_format("adts", NULL, NULL);
+
+    ofmt = av_guess_format((char *)outputfmt.data, NULL, NULL);
+    if (!ofmt) {
+        ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not get output format '%V'", &outputfmt);
+        goto exit;
+    }
+
+    output_format_context->oformat = ofmt;
 
     avcodec_copy_context(output_audio_stream->codec, input_audio_stream->codec);
     avformat_write_header(output_format_context, NULL);
@@ -206,14 +238,28 @@ exit:
     return return_code;
 }
 
+/*
+ * Remove extension from uri and paste rootpath, uri and ts extension for get source path
+ */
 ngx_str_t build_source_path(ngx_pool_t *pool, ngx_str_t rootpath, ngx_str_t uri) {
-    int len = (rootpath.len + uri.len - strlen("aac") + strlen("ts"));
-    char *source = ngx_pcalloc(pool, len * sizeof(char));
+    int len = 0;
+    int urilen = uri.len;
+    char *source;
     ngx_str_t source_t;
 
+    u_char *dot = (u_char *) ngx_strchr(uri.data, '.');
+    u_char *slash = (u_char *) ngx_strchr(uri.data, '/');
+
+    if (slash!=NULL && dot!=NULL && dot>slash) {
+        // We need to remove extension
+        urilen = uri.len - (uri.data + uri.len - dot);
+    }
+
+    len = (rootpath.len + urilen + strlen(".ts"));
+    source = ngx_pcalloc(pool, len * sizeof(char));
     strncpy(source, (char *)rootpath.data, rootpath.len);
-    strncat(source, (char *)uri.data, uri.len - strlen("aac"));
-    strcat(source, "ts");
+    strncat(source, (char *)uri.data, urilen );
+    strcat(source, ".ts");
 
     source_t.data = (u_char *)source;
     source_t.len = len;

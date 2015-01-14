@@ -48,11 +48,43 @@ Every request for _.aac_  extensions will invoke audio extract module:
 location ~ (\.aac)$ {
     ngx_hls_audio_track;
     ngx_hls_audio_track_rootpath "/path/were/video/chunks/are/";
+    ngx_hls_audio_track_output_format "adts";
+    ngx_hls_audio_track_output_header "audio/aac";
+    
     expires 10m;
 }
 </pre>
 
 That's it!
+
+You can select the output format for the chunks. All formats that you avformat library support are allowed. To show all formats supported in your instalattion, exec "ffprobe -formats" on your system.
+
+For example, to return mpegts with only audio stream:
+<pre>
+location ~ -audio\.m3u8$ {
+    default_type application/vnd.apple.mpegurl;
+    content_by_lua '
+        local base_m3u8_url = ngx.var.uri:gsub("-audio.m3u8", ".m3u8")
+        local res = ngx.location.capture(base_m3u8_url)
+        local new_body = res.body:gsub("\.ts", "-audio.ts")
+        ngx.print(new_body)
+    ';
+ }
+</pre>
+
+Every request for _-audio.ts_ files will invoke audio extract module:
+<pre>
+location ~ (-audio\.ts)$ {
+    rewrite ^(.*)-audio\.ts$ /$1.ts break;
+
+    ngx_hls_audio_track;
+    ngx_hls_audio_track_rootpath "/path/were/video/chunks/are/";
+    ngx_hls_audio_track_output_format "mpegts";
+    ngx_hls_audio_track_output_header "video/MP2T";
+    
+    expires 10m;
+}
+</pre>
 
 Status
 -
