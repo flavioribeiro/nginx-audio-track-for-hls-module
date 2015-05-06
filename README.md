@@ -133,7 +133,7 @@ It is high recommended to use caching in all locations of HLS, in special the on
 License
 -
 
-Copyright (C) 2013 Flávio Ribeiro < flavio.ribeiro _at_ corp.globo.com >
+Copyright (C) 2013-2015 Flávio Ribeiro < email at flavioribeiro.com >
 
 Nginx Audio Track For HLS Module is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
