@@ -150,13 +150,14 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
     AVOutputFormat *ofmt = NULL;
     AVStream *input_audio_stream;
     AVStream *output_audio_stream;
-    AVPacket packet, new_packet;
+    AVCodec *in_codec;
+    AVCodecContext *out_codec_ctx;
+    AVPacket packet;
     AVIOContext *io_context;
+    int ret;
 
     av_register_all();
     av_log_set_level(AV_LOG_PANIC);
-    packet.data = NULL;
-    packet.size = 0;
 
     if (avformat_open_input(&input_format_context, (char *)source.data, NULL, NULL) < 0) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not open video input: '%s'", source.data);
@@ -179,23 +180,22 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
         return_code = NGX_HTTP_AAC_MODULE_NO_DECODER;
         goto exit;
     }
-
+    
     input_audio_stream = input_format_context->streams[audio_stream_id];
     output_format_context = avformat_alloc_context();
     if (!output_format_context) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not alloc output context");
         goto exit;
     }
-
-    output_audio_stream = avformat_new_stream(output_format_context, NULL);
+    in_codec = avcodec_find_decoder(input_audio_stream->codecpar->codec_id);
+    output_audio_stream = avformat_new_stream(output_format_context, in_codec);
     if (!output_audio_stream) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not alloc output audio stream");
         goto exit;
     }
 
-    buffer_size = 1024;
+    buffer_size = 4096;//1024;
     exchange_area = ngx_pcalloc(pool, buffer_size * sizeof(unsigned char));
-
     io_context = avio_alloc_context(exchange_area, buffer_size, 1, (void *)destination, NULL, write_packet, NULL);
     output_format_context->pb = io_context;
 
@@ -204,32 +204,60 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
         ngx_log_error(NGX_LOG_ERR, log, 0, "aac module: could not get output format '%V'", &outputfmt);
         goto exit;
     }
-
     output_format_context->oformat = ofmt;
 
-    avcodec_copy_context(output_audio_stream->codec, input_audio_stream->codec);
-    avformat_write_header(output_format_context, NULL);
-
-    while (av_read_frame(input_format_context, &packet) >= 0) {
-        if (packet.stream_index == audio_stream_id) {
-            av_init_packet(&new_packet);
-            new_packet.stream_index = 0;
-            new_packet.pts = packet.pts;
-            new_packet.dts = packet.dts;
-            new_packet.data = packet.data;
-            new_packet.size = packet.size;
-
-            av_interleaved_write_frame(output_format_context, &new_packet) ;
-            av_free_packet(&new_packet);
-        }
-        av_free_packet(&packet);
+    out_codec_ctx = avcodec_alloc_context3(in_codec);
+    ret = avcodec_parameters_to_context(out_codec_ctx, input_audio_stream->codecpar);
+    if (ret < 0) {
+        ngx_log_error(NGX_LOG_ERR, log, 0, "Failed to copy context input to output stream codec context");
+        goto exit;
+    }
+     
+    out_codec_ctx->codec_tag = 0;
+    if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER) {
+        out_codec_ctx->flags |= CODEC_FLAG_GLOBAL_HEADER;
+    }
+     
+    ret = avcodec_parameters_from_context(output_audio_stream->codecpar, out_codec_ctx);
+    if (ret < 0) {
+        ngx_log_error(NGX_LOG_ERR, log, 0, "Failed to copy context input to output stream codec context: %d(%s)", ret, av_err2str(ret));
+        goto exit;
     }
 
+    ret = avformat_write_header(output_format_context, NULL);
+    if (ret < 0) {
+        ngx_log_error(NGX_LOG_ERR, log, 0, "Failed to avformat_write_header: %d(%s)", ret, av_err2str(ret));
+        goto exit;
+    }
+    
+    //av_dump_format(output_format_context, 0, "in_memory.aac", 1);
+    
+    av_init_packet(&packet);
+    packet.size = 0;
+    packet.data = NULL;
+    while (av_read_frame(input_format_context, &packet) >= 0) {
+        if (packet.stream_index == audio_stream_id) {
+
+            /* copy packet */
+            packet.pts = av_rescale_q_rnd(packet.pts, input_audio_stream->time_base, output_audio_stream->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
+            packet.dts = av_rescale_q_rnd(packet.dts, input_audio_stream->time_base, output_audio_stream->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
+            packet.duration = av_rescale_q(packet.duration, input_audio_stream->time_base, output_audio_stream->time_base);
+            packet.pos = -1;
+            
+            packet.stream_index = 0; // force set to 1st stream
+            
+            ret = av_interleaved_write_frame(output_format_context, &packet);
+            if (ret < 0) {
+                ngx_log_error(NGX_LOG_ERR, log, 0, "Error muxing packet, %d(%s)", ret, av_err2str(ret));
+                goto exit;
+            }
+        }
+        av_packet_unref(&packet);
+    }
     av_write_trailer(output_format_context);
     av_free(io_context);
 
     return_code = NGX_OK;
-
 exit:
     /* do some cleanup */
     if (output_format_context != NULL) avformat_free_context(output_format_context);
