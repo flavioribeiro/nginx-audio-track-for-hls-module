@@ -147,16 +147,19 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
 
     AVFormatContext *input_format_context = NULL;
     AVFormatContext *output_format_context = NULL;
-    AVOutputFormat *ofmt = NULL;
+    const AVOutputFormat *ofmt = NULL;
+    const AVCodec *in_codec;
     AVStream *input_audio_stream;
     AVStream *output_audio_stream;
-    AVCodec *in_codec;
     AVCodecContext *out_codec_ctx;
     AVPacket packet;
     AVIOContext *io_context;
     int ret;
 
+    #if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58, 10, 100)
     av_register_all();
+    #endif
+
     av_log_set_level(AV_LOG_PANIC);
 
     if (avformat_open_input(&input_format_context, (char *)source.data, NULL, NULL) < 0) {
