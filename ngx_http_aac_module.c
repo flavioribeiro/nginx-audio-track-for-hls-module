@@ -180,7 +180,7 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
         return_code = NGX_HTTP_AAC_MODULE_NO_DECODER;
         goto exit;
     }
-    
+
     input_audio_stream = input_format_context->streams[audio_stream_id];
     output_format_context = avformat_alloc_context();
     if (!output_format_context) {
@@ -212,12 +212,12 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
         ngx_log_error(NGX_LOG_ERR, log, 0, "Failed to copy context input to output stream codec context");
         goto exit;
     }
-     
+
     out_codec_ctx->codec_tag = 0;
     if (output_format_context->oformat->flags & AVFMT_GLOBALHEADER) {
-        out_codec_ctx->flags |= CODEC_FLAG_GLOBAL_HEADER;
+        out_codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
-     
+
     ret = avcodec_parameters_from_context(output_audio_stream->codecpar, out_codec_ctx);
     if (ret < 0) {
         ngx_log_error(NGX_LOG_ERR, log, 0, "Failed to copy context input to output stream codec context: %d(%s)", ret, av_err2str(ret));
@@ -229,9 +229,9 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
         ngx_log_error(NGX_LOG_ERR, log, 0, "Failed to avformat_write_header: %d(%s)", ret, av_err2str(ret));
         goto exit;
     }
-    
+
     //av_dump_format(output_format_context, 0, "in_memory.aac", 1);
-    
+
     av_init_packet(&packet);
     packet.size = 0;
     packet.data = NULL;
@@ -243,9 +243,9 @@ static int ngx_http_aac_extract_audio(ngx_pool_t *pool, ngx_log_t  *log, ngx_str
             packet.dts = av_rescale_q_rnd(packet.dts, input_audio_stream->time_base, output_audio_stream->time_base, AV_ROUND_NEAR_INF|AV_ROUND_PASS_MINMAX);
             packet.duration = av_rescale_q(packet.duration, input_audio_stream->time_base, output_audio_stream->time_base);
             packet.pos = -1;
-            
+
             packet.stream_index = 0; // force set to 1st stream
-            
+
             ret = av_interleaved_write_frame(output_format_context, &packet);
             if (ret < 0) {
                 ngx_log_error(NGX_LOG_ERR, log, 0, "Error muxing packet, %d(%s)", ret, av_err2str(ret));
